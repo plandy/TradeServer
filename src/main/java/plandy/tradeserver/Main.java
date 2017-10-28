@@ -18,66 +18,64 @@ public class Main {
             "2017-09-21 10:15:00,74.7850,74.8400,74.6000,74.7400,552516\n" +
             "2017-09-21 10:00:00,75.0100,75.1000,74.7600,74.7900,719967";
 
+    private static final String testTickers =  "ticker,fullname\n" +
+            "AAPL,Apple Inc.\n" +
+            "MSFT,Microsoft Corporation\n";
 
     public static void main( String[] args ) {
 
         ArrayBlockingQueue<String> inBuffer;
-        ArrayBlockingQueue<String> outBuffer;
+        ArrayBlockingQueue<ZMsg> outBuffer;
 
         ZContext zContext;
-         ZMQ.Socket zClientSocket;
 
         ZMQ.Poller zPoller;
 
         ZMQ.PollItem[] items;
 
-        ZContext context = new ZContext();
-        ZMQ.Socket socket = context.createSocket(ZMQ.ROUTER);
+        zContext = new ZContext();
+        ZMQ.Socket socket = zContext.createSocket(ZMQ.ROUTER);
         socket.setRouterMandatory(true);
-        socket.bind("tcp://localhost:8011");
+        socket.bind("tcp://localhost:5057");
 
         inBuffer = new ArrayBlockingQueue(100);
         outBuffer = new ArrayBlockingQueue(100);
 
-        zContext =  new ZContext();
-        zClientSocket = zContext.createSocket( ZMQ.DEALER );
-        zClientSocket.bind( "tcp://localhost:5057" );
-
-        items = new ZMQ.PollItem[] {
-                new ZMQ.PollItem(zClientSocket, ZMQ.Poller.POLLIN)
-        };
-
         zPoller = zContext.createPoller(1);
-        zPoller.register( zClientSocket, ZMQ.Poller.POLLIN );
+        zPoller.register( socket, ZMQ.Poller.POLLIN );
 
         boolean isRunning = true;
-        boolean sendTestString = false;
 
         while( isRunning ) {
             while( outBuffer.peek() != null ) {
-                String outMessage = outBuffer.poll();
-                zClientSocket.send( outMessage );
+                ZMsg outMessage = outBuffer.poll();
+                outMessage.send( socket );
             }
 
             int numEvents = zPoller.poll(2);
 
             for (int i = 0; i < numEvents; i++) {
-                ZMsg zMsg = ZMsg.recvMsg( zClientSocket );
+                ZMsg zMsg = ZMsg.recvMsg( socket );
                 System.out.println( zMsg.toString() + Calendar.getInstance().toInstant().toString() );
-                String message = "";
 
-                int frameIndex = 0;
-                for (ZFrame zFrame : zMsg) {
-                    System.out.println( "frame number : " + frameIndex + Calendar.getInstance().toInstant().toString() );
-                    System.out.println( "frame message : " + new String(zFrame.getData()) + Calendar.getInstance().toInstant().toString() );
-                    message += new String(zFrame.getData());
-                    frameIndex++;
-                }
-                System.out.println( "full message : " + message.toString() + Calendar.getInstance().toInstant().toString() );
+                zMsg.getFirst();
+                ZFrame zAddressFrame = zMsg.poll();
+                ZFrame clientRequestIDFrame = zMsg.poll();
+                ZFrame requestTypeFrame = zMsg.poll();
 
-                if ( "DATA_CHART".equals(message) ) {
-                    outBuffer.offer(testString);
-                }
+                ZMsg reply = new ZMsg();
+                reply.add( zAddressFrame );
+                reply.add( clientRequestIDFrame );
+                reply.add( new ZFrame(RequestType.LIST_TICKERS_RESULT.name()) );
+                reply.add( new ZFrame(testTickers) );
+
+                outBuffer.offer(reply);
+
+//                if ( RequestType.PRICE_HISTORY.name().equals(message) ) {
+//                    outBuffer.offer(testString);
+//                } else if ( RequestType.LIST_TICKERS.name().equals(message) ) {
+//                    outBuffer.offer(testTickers);
+//                }
             }
 
             try {
