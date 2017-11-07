@@ -2,7 +2,7 @@ package plandy.tradeserver;
 
 public class ListTickersConstants {
 
-    public static final String tickers = "ticker,fullname\n"+
+		public static final String TICKERS = "ticker,fullname\n"+
         "AAPL,Apple Inc.\n"+
 		"BABA,Alibaba Group Holding Limited\n"+
 		"BAC,Bank pf America Corporation\n"+

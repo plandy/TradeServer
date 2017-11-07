@@ -1,22 +1,5 @@
 package plandy.tradeserver;
 
-import org.zeromq.ZContext;
-import org.zeromq.ZFrame;
-import org.zeromq.ZMQ;
-import org.zeromq.ZMsg;
-
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.CharBuffer;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Calendar;
-import java.util.Scanner;
-import java.util.concurrent.ArrayBlockingQueue;
-
 public class Main {
 
     private static final String testString = "timestamp,open,high,low,close,volume\n" +
@@ -131,96 +114,9 @@ public class Main {
 
     public static void main( String[] args ) {
 
-        ArrayBlockingQueue<String> inBuffer;
-        ArrayBlockingQueue<ZMsg> outBuffer;
+        Server server = new Server();
+        server.start();
 
-        ZContext zContext;
-        ZMQ.Poller zPoller;
-        zContext = new ZContext();
-        ZMQ.Socket socket = zContext.createSocket(ZMQ.ROUTER);
-        socket.setRouterMandatory(true);
-        socket.bind("tcp://localhost:5057");
-
-        inBuffer = new ArrayBlockingQueue(100);
-        outBuffer = new ArrayBlockingQueue(100);
-
-        zPoller = zContext.createPoller(1);
-        zPoller.register( socket, ZMQ.Poller.POLLIN );
-
-        InputStream inStream = Main.class.getResourceAsStream("/alphavantage_apikey");
-        Scanner s = new Scanner(inStream).useDelimiter("\\A");;
-        String apiKey = s.hasNext() ? s.next() : "";
-
-        boolean isRunning = true;
-
-        while( isRunning ) {
-            while( outBuffer.peek() != null ) {
-                ZMsg outMessage = outBuffer.poll();
-                outMessage.send( socket );
-            }
-
-            int numEvents = zPoller.poll(2);
-
-            for (int i = 0; i < numEvents; i++) {
-                ZMsg zMsg = ZMsg.recvMsg( socket );
-                System.out.println( zMsg.toString() + Calendar.getInstance().toInstant().toString() );
-
-                ZFrame addressFrame = zMsg.poll();
-                ZFrame clientRequestIDFrame = zMsg.poll();
-                ZFrame requestTypeFrame = zMsg.poll();
-
-                String requestType = new String( requestTypeFrame.getData() );
-
-                ZMsg reply = new ZMsg();
-                reply.add( addressFrame );
-                reply.add( clientRequestIDFrame );
-
-                if ( RequestType.PRICE_HISTORY.name().equals(requestType) ) {
-
-                    ZFrame tickerFrame = zMsg.poll();
-                    String ticker = new String( tickerFrame.getData() );
-
-                    String request = requestString + "&apikey=" + apiKey;
-                    request = request + "&symbol=" + ticker;
-
-                    URL url = null;
-                    String response = null;
-                    try {
-                        url = new URL( request );
-                        URLConnection connection = url.openConnection();
-                        InputStreamReader inputStream = new InputStreamReader( connection.getInputStream() );
-                        BufferedReader bufferedReader = new BufferedReader( inputStream );
-
-                        String line;
-                        while ( (line = bufferedReader.readLine()) != null ) {
-                            line = line + "\n";
-                            response = response + line;
-                        }
-
-                        System.out.println(response);
-
-                    } catch (java.io.IOException e) {
-                        e.printStackTrace();
-                    }
-
-                    reply.add( new ZFrame(RequestType.PRICE_HISTORY_RESULT.name()) );
-                    reply.add( new ZFrame(response) );
-
-                } else if ( RequestType.LIST_TICKERS.name().equals(requestType) ) {
-                    reply.add( new ZFrame(RequestType.LIST_TICKERS_RESULT.name()) );
-                    reply.add( new ZFrame(ListTickersConstants.tickers) );
-                }
-
-                outBuffer.offer(reply);
-            }
-
-            try {
-                Thread.sleep( 100 );
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-
-        }
     }
 
 }
